@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Remet les écouteurs Bluetooth en mode musique (A2DP) s'ils sont retombés en mode appel
+# alors qu'aucune application n'utilise de micro. Lancé régulièrement par un timer systemd.
+# DRY_RUN=1 : affiche seulement le diagnostic, sans reconnecter.
+set -euo pipefail
+
+MAC="04:C8:B0:2E:23:A7"
+CARD="bluez_card.${MAC//:/_}"
+
+# Affiche "<profil actif> <micro utilisé: 0|1>"
+etat() {
+  pw-dump 2>/dev/null | python3 -c '
+import json, sys
+card = sys.argv[1]
+profile, mic_in_use = "absent", 0
+for o in json.load(sys.stdin):
+    info = o.get("info") or {}
+    props = info.get("props") or {}
+    if o.get("type") == "PipeWire:Interface:Device" and props.get("device.name") == card:
+        profile = ",".join(p.get("name", "") for p in info.get("params", {}).get("Profile", [])) or "aucun"
+    # Une appli qui enregistre (visio, appel…) : on ne touche à rien.
+    if props.get("media.class") == "Stream/Input/Audio":
+        mic_in_use = 1
+print(profile, mic_in_use)
+' "$CARD"
+}
+
+en_mode_appel_sans_raison() {
+  read -r profil micro < <(etat)
+  [[ "$profil" == headset-head-unit* && "$micro" == 0 ]]
+}
+
+read -r profil micro < <(etat)
+echo "profil=$profil micro_utilise=$micro"
+
+# On vérifie deux fois à 5 s d'écart pour ne pas réagir pendant une connexion en cours.
+if en_mode_appel_sans_raison && sleep 5 && en_mode_appel_sans_raison; then
+  echo "Mode appel sans appel en cours : reconnexion pour retrouver le mode musique"
+  [[ "${DRY_RUN:-0}" == 1 ]] && exit 0
+  bluetoothctl disconnect "$MAC" >/dev/null
+  sleep 2
+  bluetoothctl connect "$MAC" >/dev/null
+fi

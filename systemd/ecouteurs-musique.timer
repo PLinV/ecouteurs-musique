@@ -1,0 +1,10 @@
+[Unit]
+Description=Vérifie toutes les 30 s le mode des écouteurs Bluetooth
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

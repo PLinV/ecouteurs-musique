@@ -1,0 +1,6 @@
+[Unit]
+Description=Remet les écouteurs Bluetooth en mode musique
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ecouteurs-musique
